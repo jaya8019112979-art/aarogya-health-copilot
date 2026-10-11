@@ -1,14 +1,31 @@
 import unittest
+from types import SimpleNamespace
 
 from app import (
     answer_record_question,
+    answer_report_question_with_ai,
     compare_observations,
     create_downloadable_summary,
     create_summary,
     explain_medical_term,
     extract_health_data,
+    generate_ai_summary,
     make_fhir_bundle,
+    request_ai_completion,
 )
+
+
+class FakeOpenAIClient:
+    def __init__(self, content="AI response"):
+        self.content = content
+        self.request = None
+        self.chat = SimpleNamespace(completions=self)
+
+    def create(self, **request):
+        self.request = request
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content=self.content))]
+        )
 
 
 class HealthDataExtractionTests(unittest.TestCase):
@@ -135,6 +152,43 @@ class HealthDataExtractionTests(unittest.TestCase):
         self.assertIn("Source: lab report", output)
         self.assertIn("Category: Lab report", output)
         self.assertIn("not a diagnosis", output)
+
+    def test_ai_summary_is_opt_in_callable_and_grounded_in_report_text(self):
+        client = FakeOpenAIClient("Plain-language AI summary")
+        record = {
+            "category": "Lab report",
+            "record_date": "2025-05-14",
+            "text": "Hemoglobin: 10.2 g/dL (12-16)",
+        }
+
+        result = generate_ai_summary(record, "English", "test-key", client)
+
+        self.assertEqual(result, "Plain-language AI summary")
+        self.assertEqual(client.request["model"], "gpt-4o-mini")
+        self.assertIn("10.2 g/dL", client.request["messages"][1]["content"])
+        self.assertIn("English", client.request["messages"][0]["content"])
+
+    def test_ai_question_includes_question_and_selected_report(self):
+        client = FakeOpenAIClient("The report lists hemoglobin as 10.2 g/dL.")
+        record = {"text": "Hemoglobin: 10.2 g/dL (12-16)"}
+
+        result = answer_report_question_with_ai(
+            "What is my hemoglobin?", record, "test-key", client
+        )
+
+        self.assertIn("10.2 g/dL", result)
+        self.assertIn("What is my hemoglobin?", client.request["messages"][1]["content"])
+        self.assertIn("Hemoglobin: 10.2", client.request["messages"][1]["content"])
+
+    def test_ai_request_rejects_missing_key_and_oversized_report(self):
+        with self.assertRaisesRegex(ValueError, "not configured"):
+            request_ai_completion("system", "report", None, FakeOpenAIClient())
+        with self.assertRaisesRegex(ValueError, "too long"):
+            request_ai_completion("system", "x" * 50001, "test-key", FakeOpenAIClient())
+
+    def test_ai_request_rejects_empty_provider_response(self):
+        with self.assertRaisesRegex(RuntimeError, "empty response"):
+            request_ai_completion("system", "report", "test-key", FakeOpenAIClient(" "))
 
 
 if __name__ == "__main__":

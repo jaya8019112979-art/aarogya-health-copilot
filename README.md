@@ -14,15 +14,27 @@ Text-based PDFs are parsed with pypdf. Image uploads and scanned PDFs use Tesser
 
 - **Overview:** Session record counts, a first-record call to action, and recent uploads.
 - **Add a record:** Upload a PDF/image or paste report text, assign a category, and review extracted text before relying on it.
-- **Health summary:** Choose a source record, view its rule-based recap in English, Hindi, or Telugu, and download a plain-text summary.
+- **Health summary:** Choose a source record, view its rule-based recap in English, Hindi, or Telugu, optionally request an AI-generated explanation, and download a plain-text summary.
 - **Compare reports:** Compare repeated lab-test names across records without treating differences as a clinical trend.
-- **Ask your report:** Search one record's extracted fields and matching source lines; this is a local lookup, not generative AI.
+- **Ask your report:** Search one record locally or, after explicit consent, request an AI answer grounded in the selected record.
 - **Term guide:** Browse a small, curated medical glossary in English or Telugu.
 - **Timeline:** Search and filter records by category; extracted report dates and details remain linked to their source.
 - **FHIR / ABHA demo:** Preview and download a mock FHIR-style JSON bundle.
 - **How it works:** Review the extraction pipeline, data model, and limitations.
 
 The layout adapts to narrow screens. Navigation and records remain within the active Streamlit session.
+
+## Optional cloud AI
+
+AI-generated summaries and report answers use OpenAI's `gpt-4o-mini` model. They are only requested when a user opts in on the relevant screen. The selected report's extracted text (and the question for Q&A) is sent to OpenAI; review OpenAI's current data policies before enabling this for any sensitive information.
+
+To configure the app, add this to Streamlit Community Cloud's **App settings → Secrets** (or set `OPENAI_API_KEY` in the environment for a local run):
+
+```toml
+OPENAI_API_KEY = "your-key"
+```
+
+Never commit or share the key. The current public demo has no user accounts, access controls, or per-user quotas. Anyone who can access it may be able to use a configured shared key and incur API costs, so do not configure a paid key on the public demo until access and usage limits are in place. Without a key, the existing local summary and lookup continue to work.
 
 ## Publish a shareable website
 
@@ -62,11 +74,11 @@ flowchart LR
 - Summaries are not diagnoses or medical advice. Consult a qualified healthcare professional about results and care decisions.
 - Hindi and Telugu cover fixed summary phrases; the term guide has a small Telugu glossary. The OCR engine can read English and Telugu when both Tesseract language packs are installed, but structured field extraction is limited to supported English labels and patterns. Handwriting and bilingual layouts may be misread.
 - This is a public demo with no accounts or access controls. Do not upload real health records or personal health information.
-- Summaries, term explanations, comparison, and report Q&A use fixed local rules and curated text; no generative AI service is connected. The question helper returns matching report text and does not interpret results or recommend care.
+- The basic summaries, term explanations, comparison, and local report lookup use fixed rules and curated text. Optional OpenAI summaries and Q&A send the selected report's extracted text to the provider only after user consent. Generated output may be inaccurate and is not medical advice.
 
 ## Demo walkthrough
 
 1. Open **Add a record** and paste a sample report or upload a text PDF / image.
 2. Review extracted text carefully, especially if OCR was used.
-3. Open **Health summary** and switch the fixed summary wording between English, Hindi, and Telugu.
+3. Open **Health summary** and switch the fixed summary wording between English, Hindi, and Telugu. If cloud AI is configured, explicitly opt in before generating an AI explanation.
 4. View the report in **Timeline**, then preview or download the dummy **FHIR / ABHA demo** JSON.
