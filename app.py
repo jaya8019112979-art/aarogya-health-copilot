@@ -633,9 +633,16 @@ elif page == "Add a record":
             st.caption(f"Selected: {uploaded_file.name} · {uploaded_file.size:,} bytes")
             if st.button("Extract and add record", type="primary"):
                 try:
-                    extracted_text = extract_document_text(uploaded_file)
+                    with st.spinner(
+                        "Reading your file and extracting text — larger images may take a little longer."
+                    ):
+                        extracted_text = extract_document_text(uploaded_file)
                 except Exception as exc:
                     st.error(f"Could not extract this file: {exc}")
+                    st.caption(
+                        "For best results, use a clear, upright image with printed English text. "
+                        "Scanned handwriting and regional-language text may not be recognized."
+                    )
                 else:
                     add_record(uploaded_file.name, uploaded_file.type or "application/octet-stream", extracted_text)
                     st.success("Record added to this session.")
