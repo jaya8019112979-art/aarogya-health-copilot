@@ -8,14 +8,17 @@ A Streamlit prototype for collecting health report text, extracting a few explic
 2. Install the Python dependencies: `pip install -r requirements.txt`
 3. Start the app: `streamlit run app.py`
 
-Text-based PDFs are parsed with pypdf. Image uploads and scanned PDFs use Tesseract OCR; install the Tesseract application separately and make sure `tesseract.exe` is on `PATH`. For OCR languages beyond Tesseract's default English, install the corresponding language data and configure the local Tesseract installation. OCR of handwriting and mixed-language reports is not supported reliably.
+Text-based PDFs are parsed with pypdf. Image uploads and scanned PDFs use Tesseract OCR; install the Tesseract application separately and make sure `tesseract.exe` is on `PATH`. The hosted app installs English and Telugu Tesseract data and uses both when available. For local bilingual OCR, install the Telugu language data (usually `tel.traineddata`) in the Tesseract tessdata directory. OCR quality depends on the document and is not reliable for handwriting.
 
 ## Website screens
 
 - **Overview:** Session record counts, a first-record call to action, and recent uploads.
-- **Add a record:** Upload a PDF/image or paste report text; review extracted text before relying on it.
-- **Health summary:** Choose a source record and view its recap in English, Hindi, or Telugu.
-- **Timeline:** Browse records and extracted details in session order.
+- **Add a record:** Upload a PDF/image or paste report text, assign a category, and review extracted text before relying on it.
+- **Health summary:** Choose a source record, view its rule-based recap in English, Hindi, or Telugu, and download a plain-text summary.
+- **Compare reports:** Compare repeated lab-test names across records without treating differences as a clinical trend.
+- **Ask your report:** Search one record's extracted fields and matching source lines; this is a local lookup, not generative AI.
+- **Term guide:** Browse a small, curated medical glossary in English or Telugu.
+- **Timeline:** Search and filter records by category; extracted report dates and details remain linked to their source.
 - **FHIR / ABHA demo:** Preview and download a mock FHIR-style JSON bundle.
 - **How it works:** Review the extraction pipeline, data model, and limitations.
 
@@ -57,7 +60,9 @@ flowchart LR
 - A value is compared only with the reference interval included on that report. No reference interval is inferred. OCR and extraction output must be checked against the original.
 - The JSON export is a small FHIR-style demo bundle with `Patient`, `DocumentReference`, and `Observation` resources. It is not a validated FHIR/ABDM implementation and does not communicate with ABDM or an ABHA account. Use dummy IDs only.
 - Summaries are not diagnoses or medical advice. Consult a qualified healthcare professional about results and care decisions.
-- Hindi and Telugu cover fixed summary phrases only. Extracted labels and values remain in the language of the source; OCR is not configured for regional-language or handwritten text by default.
+- Hindi and Telugu cover fixed summary phrases; the term guide has a small Telugu glossary. The OCR engine can read English and Telugu when both Tesseract language packs are installed, but structured field extraction is limited to supported English labels and patterns. Handwriting and bilingual layouts may be misread.
+- This is a public demo with no accounts or access controls. Do not upload real health records or personal health information.
+- Summaries, term explanations, comparison, and report Q&A use fixed local rules and curated text; no generative AI service is connected. The question helper returns matching report text and does not interpret results or recommend care.
 
 ## Demo walkthrough
 

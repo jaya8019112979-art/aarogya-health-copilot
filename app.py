@@ -191,6 +191,44 @@ if "records" not in st.session_state:
     st.session_state.records = []
 
 
+RECORD_CATEGORIES = [
+    "Lab report",
+    "Prescription",
+    "Discharge summary",
+    "Diagnostic report",
+    "Other",
+]
+
+MEDICAL_TERM_GLOSSARY = {
+    "anemia": "A lower-than-expected amount of red blood cells or hemoglobin. A clinician interprets this with the full blood count, symptoms, and history.",
+    "anomaly": "A finding that differs from what was expected; its importance depends on the report and clinical context.",
+    "benign": "A term generally used for a finding that is not cancerous. Ask the clinician who reviewed the report what it means in your case.",
+    "biopsy": "A procedure in which a small sample of tissue is examined in a laboratory.",
+    "cbc": "Complete blood count: a group of tests that measure blood cells and related components.",
+    "creatinine": "A waste product measured in blood or urine; clinicians may use it, along with other information, to assess kidney function.",
+    "diagnosis": "The condition or explanation recorded by the healthcare professional; this app does not verify it.",
+    "glucose": "A type of sugar in the blood. The meaning of a result depends on the test, timing, and the lab's stated range.",
+    "hemoglobin": "A protein in red blood cells that carries oxygen. The report's own reference interval and clinical context matter.",
+    "hypertension": "Persistently high blood pressure. A single reading alone may not establish this diagnosis.",
+    "impression": "The radiologist's or clinician's brief interpretation of a study or report.",
+    "mri": "Magnetic resonance imaging: a scan that uses magnetic fields and radio waves to create images.",
+    "platelets": "Blood components that help with clotting. High or low results need interpretation with the complete report.",
+    "reference range": "The comparison interval printed by a laboratory. Ranges can vary between labs and people.",
+    "ultrasound": "An imaging test that uses sound waves to produce pictures of structures inside the body.",
+    "x-ray": "An imaging test that uses a small amount of radiation to create pictures of structures in the body.",
+}
+
+MEDICAL_TERM_GLOSSARY_TELUGU = {
+    "anemia": "ఎర్ర రక్త కణాలు లేదా హీమోగ్లోబిన్ తక్కువగా ఉండే పరిస్థితిని సాధారణంగా సూచిస్తుంది. పూర్తి రక్త పరీక్ష, లక్షణాలు, వైద్య చరిత్రతో వైద్య నిపుణుడు అర్థం చేసుకోవాలి.",
+    "cbc": "పూర్తి రక్త గణన: రక్త కణాలు మరియు సంబంధిత భాగాలను కొలిచే పరీక్షల సమూహం.",
+    "creatinine": "రక్తం లేదా మూత్రంలో కొలిచే వ్యర్థ పదార్థం. ఇతర సమాచారంతో కలిపి మూత్రపిండాల పనితీరును అంచనా వేయడానికి వైద్యులు ఉపయోగించవచ్చు.",
+    "glucose": "రక్తంలోని ఒక రకమైన చక్కెర. ఫలితాన్ని పరీక్ష రకం, సమయం, నివేదికలోని పరిధితో కలిపి అర్థం చేసుకోవాలి.",
+    "hemoglobin": "ఆక్సిజన్‌ను మోసే ఎర్ర రక్త కణాల ప్రోటీన్. నివేదికలోని పరిధి మరియు వైద్య సందర్భం ముఖ్యం.",
+    "platelets": "రక్తం గడ్డకట్టడంలో సహాయపడే రక్త భాగాలు. ఫలితాలను మొత్తం నివేదికతో కలిపి అర్థం చేసుకోవాలి.",
+    "reference range": "ప్రయోగశాల నివేదికలో ముద్రించిన పోలిక పరిధి. ఇది ప్రయోగశాల మరియు వ్యక్తిని బట్టి మారవచ్చు.",
+}
+
+
 def extract_document_text(uploaded_file):
     """Extract searchable PDF text, falling back to local Tesseract OCR."""
     content = uploaded_file.getvalue()
@@ -220,7 +258,8 @@ def extract_document_text(uploaded_file):
         for page in document:
             pixmap = page.get_pixmap(matrix=fitz.Matrix(2, 2), alpha=False)
             image = Image.open(BytesIO(pixmap.tobytes("png")))
-            ocr_pages.append(pytesseract.image_to_string(image))
+            languages = "eng+tel" if "tel" in pytesseract.get_languages() else "eng"
+            ocr_pages.append(pytesseract.image_to_string(image, lang=languages))
         text = "\n".join(ocr_pages).strip()
         if not text:
             raise RuntimeError("No readable text was found in this PDF.")
@@ -235,7 +274,8 @@ def extract_document_text(uploaded_file):
         ) from exc
 
     image = Image.open(BytesIO(content))
-    text = pytesseract.image_to_string(image).strip()
+    languages = "eng+tel" if "tel" in pytesseract.get_languages() else "eng"
+    text = pytesseract.image_to_string(image, lang=languages).strip()
     if not text:
         raise RuntimeError("No readable text was found in this image.")
     return text
@@ -398,6 +438,117 @@ def create_summary(health_data, language):
     return "\n\n".join(lines), phrases["disclaimer"]
 
 
+def explain_medical_term(term, language="English"):
+    """Look up a term in a small, curated glossary; do not infer diagnoses."""
+    normalized = " ".join(term.casefold().strip().split())
+    glossary = (
+        MEDICAL_TERM_GLOSSARY_TELUGU
+        if language == "Telugu"
+        else MEDICAL_TERM_GLOSSARY
+    )
+    return glossary.get(normalized)
+
+
+def compare_observations(records):
+    """Return repeated lab names from separate records for a source-linked comparison."""
+    grouped = {}
+    for record in records:
+        for observation in record["health_data"]["observations"]:
+            key = observation["name"].casefold().strip()
+            grouped.setdefault(key, []).append(
+                {
+                    "Test": observation["name"],
+                    "Record": record["name"],
+                    "Date": record.get("record_date", "Date not found"),
+                    "Value": f"{observation['value']} {observation['unit']}".strip(),
+                    "Status vs. stated range": observation["status"],
+                    "Reference range": (
+                        f"{observation['reference_low']}–{observation['reference_high']} "
+                        f"{observation['reference_unit']}"
+                    ).strip(),
+                }
+            )
+    return [row for matches in grouped.values() if len(matches) > 1 for row in matches]
+
+
+def answer_record_question(question, record):
+    """Answer only from fields extracted from the selected record or matching source lines."""
+    health_data = record["health_data"]
+    normalized = question.casefold()
+
+    if any(word in normalized for word in ("medicine", "medication", "prescription", "dose", "tablet")):
+        medicines = health_data["medications"]
+        if medicines:
+            return "Medicine text found in this record:\n" + "\n".join(
+                f"- {item['name']}: {item['dose']} {item['instructions']}".strip()
+                for item in medicines
+            )
+        return "No medicine names with a recognized dose were extracted from this record. Check the original prescription."
+
+    if any(word in normalized for word in ("date", "when", "dated")):
+        if health_data["dates"]:
+            return "Date text found in this record: " + ", ".join(health_data["dates"])
+        return "No date was recognized in this record's text."
+
+    if any(word in normalized for word in ("diagnosis", "impression", "diagnosed")):
+        if health_data["diagnoses"]:
+            return "Diagnosis/impression text copied from this record:\n" + "\n".join(
+                f"- {item}" for item in health_data["diagnoses"]
+            )
+        return "No diagnosis or impression label was recognized in this record."
+
+    matching_observations = [
+        item
+        for item in health_data["observations"]
+        if any(
+            part in normalized
+            for part in re.findall(r"[a-z0-9]+", item["name"].casefold())
+            if len(part) > 2
+        )
+    ]
+    if matching_observations:
+        return "Lab result text found in this record:\n" + "\n".join(
+            f"- {item['name']}: {item['value']} {item['unit']} — "
+            f"{item['status']} versus the range printed on this report "
+            f"({item['reference_low']}–{item['reference_high']})."
+            for item in matching_observations
+        )
+
+    query_words = {
+        word for word in re.findall(r"[a-z0-9]+", normalized) if len(word) > 3
+    }
+    matching_lines = [
+        line.strip()
+        for line in record["text"].splitlines()
+        if line.strip()
+        and query_words.intersection(
+            re.findall(r"[a-z0-9]+", line.casefold())
+        )
+    ]
+    if matching_lines:
+        return "Matching source text (not interpreted):\n" + "\n".join(
+            f"- {line}" for line in matching_lines[:5]
+        )
+    return (
+        "I couldn't find that in the selected record. Try a test name, medicine, "
+        "date, diagnosis, or a word that appears in the report. This prototype "
+        "does not generate medical advice."
+    )
+
+
+def create_downloadable_summary(record, language):
+    summary, disclaimer = create_summary(record["health_data"], language)
+    return (
+        f"Aarogya health-record summary\n"
+        f"Source: {record['name']}\n"
+        f"Category: {record.get('category', 'Other')}\n"
+        f"Record date: {record.get('record_date', 'Date not found')}\n\n"
+        f"{summary.replace('### ', '')}\n\n"
+        f"Safety note: {disclaimer}\n"
+        "Check extracted details against the original record. This is not a diagnosis or medical advice.\n"
+    )
+
+
 def make_fhir_bundle(patient_name, demo_id, records):
     """Create a lightweight FHIR-style demo bundle, not a validated FHIR export."""
     resources = [
@@ -468,7 +619,7 @@ def make_fhir_bundle(patient_name, demo_id, records):
     }
 
 
-def add_record(name, content_type, text):
+def add_record(name, content_type, text, category="Other"):
     health_data = extract_health_data(text)
     st.session_state.records.insert(
         0,
@@ -476,6 +627,7 @@ def add_record(name, content_type, text):
             "name": name,
             "content_type": content_type,
             "text": text,
+            "category": category,
             "health_data": health_data,
             "created_at": datetime.now().astimezone().isoformat(timespec="seconds"),
             "record_date": health_data["dates"][0] if health_data["dates"] else "Date not found",
@@ -503,7 +655,17 @@ st.markdown(
 )
 page = st.radio(
     "Workspace",
-    ["Overview", "Add a record", "Health summary", "Timeline", "FHIR / ABHA demo", "How it works"],
+    [
+        "Overview",
+        "Add a record",
+        "Health summary",
+        "Compare reports",
+        "Ask your report",
+        "Term guide",
+        "Timeline",
+        "FHIR / ABHA demo",
+        "How it works",
+    ],
     label_visibility="collapsed",
     horizontal=True,
     key="page_navigation",
@@ -533,6 +695,11 @@ if page == "Overview":
     records = st.session_state.records
     observation_count = sum(len(item["health_data"]["observations"]) for item in records)
     medication_count = sum(len(item["health_data"]["medications"]) for item in records)
+    abnormal_count = sum(
+        observation["status"] in ("High", "Low")
+        for record in records
+        for observation in record["health_data"]["observations"]
+    )
     st.markdown(
         """
         <div class="overview-heading">
@@ -542,12 +709,12 @@ if page == "Overview":
         """,
         unsafe_allow_html=True,
     )
-    columns = st.columns(3)
+    columns = st.columns(4)
     for column, icon, label, value in zip(
         columns,
-        ["▤", "⌁", "＋"],
-        ["Records collected", "Lab values found", "Medicine mentions"],
-        [len(records), observation_count, medication_count],
+        ["▤", "⌁", "＋", "◉"],
+        ["Records collected", "Lab values found", "Medicine mentions", "Outside stated range"],
+        [len(records), observation_count, medication_count, abnormal_count],
     ):
         column.markdown(
             f'<div class="soft-card"><small>{icon} &nbsp; {label}</small><strong>{value}</strong></div>',
@@ -621,6 +788,10 @@ elif page == "Add a record":
     st.title("Add a health record")
     st.write("Bring a report into your session. Review extracted text carefully before using it.")
     st.info("Files and pasted text are held in this active app session only; they are not added to a persistent health record.")
+    st.warning(
+        "This is a public demo without accounts or access controls. Use synthetic/sample "
+        "documents only — never upload real medical records or personal health information."
+    )
     upload_tab, paste_tab = st.tabs(["Upload a file", "Paste report text"])
 
     with upload_tab:
@@ -631,6 +802,11 @@ elif page == "Add a record":
         )
         if uploaded_file:
             st.caption(f"Selected: {uploaded_file.name} · {uploaded_file.size:,} bytes")
+            category = st.selectbox(
+                "Record category",
+                RECORD_CATEGORIES,
+                key="upload_record_category",
+            )
             if st.button("Extract and add record", type="primary"):
                 try:
                     with st.spinner(
@@ -644,12 +820,22 @@ elif page == "Add a record":
                         "Scanned handwriting and regional-language text may not be recognized."
                     )
                 else:
-                    add_record(uploaded_file.name, uploaded_file.type or "application/octet-stream", extracted_text)
+                    add_record(
+                        uploaded_file.name,
+                        uploaded_file.type or "application/octet-stream",
+                        extracted_text,
+                        category,
+                    )
                     st.success("Record added to this session.")
                     st.text_area("Extracted text — review OCR before relying on it", extracted_text, height=220)
                     st.caption("OCR can misread names, values, units, and handwriting. Verify every detail against the original.")
 
     with paste_tab:
+        pasted_category = st.selectbox(
+            "Record category",
+            RECORD_CATEGORIES,
+            key="pasted_record_category",
+        )
         pasted_text = st.text_area(
             "Paste text from a report",
             height=220,
@@ -660,7 +846,12 @@ elif page == "Add a record":
             if not pasted_text.strip():
                 st.error("Paste some report text first.")
             else:
-                add_record(record_name.strip() or "Pasted health record", "text/plain", pasted_text.strip())
+                add_record(
+                    record_name.strip() or "Pasted health record",
+                    "text/plain",
+                    pasted_text.strip(),
+                    pasted_category,
+                )
                 st.success("Record added to this session.")
 
 elif page == "Health summary":
@@ -689,19 +880,137 @@ elif page == "Health summary":
         if record["health_data"]["medications"]:
             st.subheader("Medicine mentions")
             st.dataframe(record["health_data"]["medications"], use_container_width=True, hide_index=True)
+        st.download_button(
+            "Download plain-language summary",
+            data=create_downloadable_summary(record, language),
+            file_name="aarogya-health-summary.txt",
+            mime="text/plain",
+        )
         with st.expander("View source text"):
             st.text(record["text"])
 
+elif page == "Compare reports":
+    st.title("Compare reports")
+    st.caption(
+        "Compare repeated test names as recorded in different documents. "
+        "This does not establish a clinical trend or account for differences between laboratories."
+    )
+    records = st.session_state.records
+    if len(records) < 2:
+        st.info("Add at least two records with the same named lab test to compare results.")
+    else:
+        comparison = compare_observations(records)
+        if comparison:
+            st.dataframe(comparison, use_container_width=True, hide_index=True)
+            st.warning(
+                "Values are shown with each report's own units and stated range. "
+                "Do not interpret differences as a diagnosis; ask a clinician."
+            )
+        else:
+            st.info(
+                "No repeated test names were found across records. Comparison matches "
+                "the extracted test name exactly (ignoring letter case)."
+            )
+
+elif page == "Ask your report":
+    st.title("Ask your report")
+    st.caption(
+        "Session-local lookup only — this is not a generative AI or medical advice service. "
+        "Answers are limited to text found in a selected record."
+    )
+    records = st.session_state.records
+    if not records:
+        st.info("Add a report first to ask about its extracted text.")
+    else:
+        labels = [
+            f"{record['name']} · {record.get('category', 'Other')} · {record['record_date']}"
+            for record in records
+        ]
+        selected = st.selectbox(
+            "Choose a source record",
+            range(len(records)),
+            format_func=lambda index: labels[index],
+            key="question_record",
+        )
+        with st.form("report_question_form"):
+            question = st.text_input(
+                "Ask about a test, medicine, date, diagnosis, or report text",
+                placeholder="Example: What hemoglobin result is listed?",
+            )
+            submitted = st.form_submit_button("Find in this report", type="primary")
+        if submitted:
+            if not question.strip():
+                st.error("Enter a question or a keyword from the report.")
+            else:
+                st.markdown(answer_record_question(question, records[selected]))
+        st.caption(
+            "This lookup can miss OCR errors or differently worded text. Verify answers "
+            "against the original report and ask a qualified clinician about meaning."
+        )
+
+elif page == "Term guide":
+    st.title("Medical term guide")
+    st.caption(
+        "Short, curated explanations in English and Telugu. These are general definitions, "
+        "not interpretations of your personal results."
+    )
+    language = st.selectbox("Explanation language", ["English", "Telugu"])
+    term = st.text_input(
+        "Enter a medical term",
+        placeholder="Examples: hemoglobin, CBC, reference range",
+    )
+    if term.strip():
+        explanation = explain_medical_term(term, language)
+        if explanation:
+            st.info(explanation)
+        else:
+            st.warning(
+                "That term is not in this prototype's small glossary. Check the report's "
+                "own notes or ask your healthcare professional."
+            )
+    glossary = (
+        MEDICAL_TERM_GLOSSARY_TELUGU
+        if language == "Telugu"
+        else MEDICAL_TERM_GLOSSARY
+    )
+    with st.expander("Browse available terms"):
+        st.write(", ".join(sorted(glossary)))
+
 elif page == "Timeline":
     st.title("Health timeline")
-    st.caption("A session-level index of your records. Dates and details come from the source text.")
+    st.caption("A session-level index organized by category and report date.")
     if not st.session_state.records:
         st.info("Your timeline is empty. Add a record to get started.")
     else:
-        for record in st.session_state.records:
+        categories = sorted(
+            {record.get("category", "Other") for record in st.session_state.records}
+        )
+        selected_categories = st.multiselect(
+            "Filter by record category",
+            categories,
+            default=categories,
+        )
+        query = st.text_input("Search record names and extracted details")
+        visible_records = [
+            record
+            for record in st.session_state.records
+            if record.get("category", "Other") in selected_categories
+            and (
+                not query.strip()
+                or query.casefold() in record["name"].casefold()
+                or query.casefold() in record["text"].casefold()
+            )
+        ]
+        if not visible_records:
+            st.info("No records match those filters.")
+        for record in visible_records:
             with st.container(border=True):
                 top, detail = st.columns([1, 4])
-                top.markdown(f'<div class="timeline-date">{record["record_date"]}</div>', unsafe_allow_html=True)
+                top.markdown(
+                    f'<div class="timeline-date">{record["record_date"]}</div>'
+                    f'<div>{record.get("category", "Other")}</div>',
+                    unsafe_allow_html=True,
+                )
                 detail.markdown(f"### {record['name']}")
                 detail.caption(
                     f"{len(record['health_data']['observations'])} lab values · "

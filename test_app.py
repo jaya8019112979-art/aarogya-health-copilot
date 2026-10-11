@@ -1,6 +1,14 @@
 import unittest
 
-from app import create_summary, extract_health_data, make_fhir_bundle
+from app import (
+    answer_record_question,
+    compare_observations,
+    create_downloadable_summary,
+    create_summary,
+    explain_medical_term,
+    extract_health_data,
+    make_fhir_bundle,
+)
 
 
 class HealthDataExtractionTests(unittest.TestCase):
@@ -65,6 +73,68 @@ class HealthDataExtractionTests(unittest.TestCase):
 
         self.assertEqual(bundle["resourceType"], "Bundle")
         self.assertEqual(resource_types, ["Patient", "DocumentReference", "Observation"])
+
+    def test_comparison_only_returns_tests_present_in_multiple_records(self):
+        records = [
+            {
+                "name": "first report",
+                "record_date": "2025-05-14",
+                "health_data": extract_health_data(
+                    "Hemoglobin: 10.2 g/dL (12-16)\nGlucose: 90 mg/dL (70-100)"
+                ),
+            },
+            {
+                "name": "second report",
+                "record_date": "2025-06-14",
+                "health_data": extract_health_data(
+                    "Hemoglobin: 11.5 g/dL (12-16)\nPlatelets: 250 10^9/L (150-400)"
+                ),
+            },
+        ]
+
+        result = compare_observations(records)
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual({row["Test"] for row in result}, {"Hemoglobin"})
+        self.assertEqual({row["Record"] for row in result}, {"first report", "second report"})
+
+    def test_report_questions_only_return_source_backed_details(self):
+        record = {
+            "name": "lab report",
+            "record_date": "2025-05-14",
+            "category": "Lab report",
+            "text": "Hemoglobin: 10.2 g/dL (12-16)\nReport date: 2025-05-14",
+            "health_data": extract_health_data(
+                "Hemoglobin: 10.2 g/dL (12-16)\nReport date: 2025-05-14"
+            ),
+        }
+
+        answer = answer_record_question("What is my hemoglobin?", record)
+        unsupported = answer_record_question("What treatment should I take?", record)
+
+        self.assertIn("10.2 g/dL", answer)
+        self.assertIn("Low", answer)
+        self.assertIn("couldn't find", unsupported)
+        self.assertIn("does not generate medical advice", unsupported)
+
+    def test_medical_term_glossary_supports_english_and_telugu(self):
+        self.assertIn("red blood cells", explain_medical_term("Anemia"))
+        self.assertTrue(explain_medical_term("hemoglobin", "Telugu"))
+        self.assertIsNone(explain_medical_term("unknown term"))
+
+    def test_summary_download_includes_record_context_and_safety_note(self):
+        record = {
+            "name": "lab report",
+            "record_date": "2025-05-14",
+            "category": "Lab report",
+            "health_data": extract_health_data("Hemoglobin: 10.2 g/dL (12-16)"),
+        }
+
+        output = create_downloadable_summary(record, "English")
+
+        self.assertIn("Source: lab report", output)
+        self.assertIn("Category: Lab report", output)
+        self.assertIn("not a diagnosis", output)
 
 
 if __name__ == "__main__":
