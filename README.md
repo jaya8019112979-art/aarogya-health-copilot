@@ -13,16 +13,17 @@ Text-based PDFs are parsed with pypdf. Image uploads and scanned PDFs use Tesser
 ## Website screens
 
 - **Overview:** Session record counts, a first-record call to action, and recent uploads.
-- **Add a record:** Upload a PDF/image or paste report text, assign a category, review extracted text, and see an immediate simple Telugu recap of recognized details.
+- **Add a record:** Upload a PDF/image or paste report text, assign a category, review extracted text, and see immediate simple explanations in English and Telugu.
 - **Health summary:** Choose a source record, view its rule-based recap in English, Hindi, or Telugu, optionally request an AI-generated explanation, and download a plain-text summary.
 - **Compare reports:** Compare repeated lab-test names across records without treating differences as a clinical trend.
-- **Ask your report:** Search one record locally or, after explicit consent, request an AI answer grounded in the selected record.
+- **Ask your report:** Search one record locally or, after explicit consent, request an AI answer grounded in the selected record. Read answers aloud with your browser's built-in speech synthesis; questions remain typed.
+- **Wellness coach:** Record session-only sleep, mood, stress, and water check-ins. See gentle, rule-based wellbeing tips and track water against a goal you choose.
 - **Term guide:** Browse a small, curated medical glossary in English or Telugu.
 - **Timeline:** Search and filter records by category; extracted report dates and details remain linked to their source.
 - **FHIR / ABHA demo:** Preview and download a mock FHIR-style JSON bundle.
 - **How it works:** Review the extraction pipeline, data model, and limitations.
 
-The layout adapts to narrow screens. Navigation and records remain within the active Streamlit session.
+The layout adapts to narrow screens. Navigation, records, and wellness check-ins remain within the active Streamlit session.
 
 ## Optional cloud AI
 
@@ -67,18 +68,20 @@ flowchart LR
 
 ## Data and safety notes
 
-- Records, extracted text, and summaries are held in Streamlit session state; nothing is written by this app to a database or persistent file. The active Streamlit host still handles uploaded bytes in memory.
+- Records, extracted text, summaries, and wellness check-ins are held in Streamlit session state; nothing is written by this app to a database or persistent file. The active Streamlit host still handles uploaded bytes in memory.
 - The extractor looks for dates, medicine-like lines with a dose, `Diagnosis:`/`Impression:` labels, and lab values accompanied by an explicit reference interval. These are best-effort text patterns, not clinical NLP.
 - A value is compared only with the reference interval included on that report. No reference interval is inferred. OCR and extraction output must be checked against the original.
 - The JSON export is a small FHIR-style demo bundle with `Patient`, `DocumentReference`, and `Observation` resources. It is not a validated FHIR/ABDM implementation and does not communicate with ABDM or an ABHA account. Use dummy IDs only.
 - Summaries are not diagnoses or medical advice. Consult a qualified healthcare professional about results and care decisions.
-- Hindi and Telugu cover fixed summary phrases; the term guide has a small Telugu glossary. The OCR engine can read English and Telugu when both Tesseract language packs are installed, but structured field extraction is limited to supported English labels and patterns. Handwriting and bilingual layouts may be misread.
+- Hindi and Telugu cover fixed summary phrases; the term guide has a small Telugu glossary. English and Telugu extraction explanations can be read aloud with the device/browser's speech synthesis if supported. Speech playback is browser-generated; the app does not record or transmit audio. The OCR engine can read English and Telugu when both Tesseract language packs are installed, but structured field extraction is limited to supported English labels and patterns. Handwriting and bilingual layouts may be misread.
+- Wellness coaching uses a few local rules and is not an AI assessment, diagnosis, or medical advice. Hydration goals are user-selected rather than prescribed. The app cannot send timed or background reminders. Wellness values are session-only and may be sensitive; use fictional data in the public demo.
 - This is a public demo with no accounts or access controls. Do not upload real health records or personal health information.
 - The basic summaries, term explanations, comparison, and local report lookup use fixed rules and curated text. Optional OpenAI summaries and Q&A send the selected report's extracted text to the provider only after user consent. Generated output may be inaccurate and is not medical advice.
 
 ## Demo walkthrough
 
 1. Open **Add a record** and paste a sample report or upload a text PDF / image.
-2. Review extracted text carefully, especially if OCR was used; the app also displays a rule-based Telugu explanation after extraction.
+2. Review extracted text carefully, especially if OCR was used; the app displays rule-based explanations in both English and Telugu after extraction. Use the listen controls if your browser supports speech synthesis.
 3. Open **Health summary** and switch the fixed summary wording between English, Hindi, and Telugu. If cloud AI is configured, explicitly opt in before generating an AI explanation.
 4. View the report in **Timeline**, then preview or download the dummy **FHIR / ABHA demo** JSON.
+5. Open **Wellness coach** to try fictional sleep, mood, stress, and hydration check-ins. These entries disappear when the active session ends.

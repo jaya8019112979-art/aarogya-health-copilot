@@ -1,7 +1,9 @@
+import html
 import json
 import os
 import re
-from datetime import datetime
+import uuid
+from datetime import date, datetime
 from io import BytesIO
 
 import streamlit as st
@@ -442,12 +444,99 @@ def create_summary(health_data, language):
     return "\n\n".join(lines), phrases["disclaimer"]
 
 
-def render_telugu_explanation(health_data):
-    """Show a simple, rule-based Telugu recap after a record is added."""
-    summary, disclaimer = create_summary(health_data, "Telugu")
-    st.subheader("సులభమైన వివరణ (తెలుగు)")
-    st.markdown(summary)
-    st.warning(disclaimer)
+def render_bilingual_explanation(health_data):
+    """Show English and Telugu rule-based recaps after a record is added."""
+    english_summary, english_disclaimer = create_summary(health_data, "English")
+    telugu_summary, telugu_disclaimer = create_summary(health_data, "Telugu")
+    st.subheader("Simple explanation / సులభమైన వివరణ")
+    english, telugu = st.columns(2)
+    with english:
+        st.markdown("#### English")
+        st.markdown(english_summary)
+        st.caption(english_disclaimer)
+        render_speech_button(english_summary + "\n\n" + english_disclaimer, "en-IN")
+    with telugu:
+        st.markdown("#### తెలుగు")
+        st.markdown(telugu_summary)
+        st.caption(telugu_disclaimer)
+        render_speech_button(telugu_summary + "\n\n" + telugu_disclaimer, "te-IN")
+
+
+def render_speech_button(text, language="en-IN"):
+    """Speak trusted app output with the browser's local speech-synthesis voices."""
+    element_id = f"aarogya-speak-{uuid.uuid4().hex}"
+    safe_text = html.escape(text, quote=True)
+    safe_language = language if language in ("en-IN", "te-IN") else "en-IN"
+    st.html(
+        f"""
+        <div id="{element_id}" data-speech="{safe_text}">
+          <button type="button" style="padding:.45rem .8rem;border-radius:.5rem;cursor:pointer">
+            🔊 Listen
+          </button>
+          <span role="status" aria-live="polite"></span>
+          <script>
+            const root = document.currentScript.parentElement;
+            const button = root.querySelector("button");
+            const status = root.querySelector("[role='status']");
+            button.addEventListener("click", () => {{
+              if (!("speechSynthesis" in window) || !("SpeechSynthesisUtterance" in window)) {{
+                status.textContent = "Speech playback is not supported by this browser.";
+                return;
+              }}
+              window.speechSynthesis.cancel();
+              const speech = new SpeechSynthesisUtterance(root.dataset.speech);
+              speech.lang = "{safe_language}";
+              speech.onerror = () => {{
+                status.textContent = "Speech playback failed. Check your device's voice settings.";
+              }};
+              window.speechSynthesis.speak(speech);
+            }});
+          </script>
+        </div>
+        """,
+        unsafe_allow_javascript=True,
+    )
+
+
+def wellness_guidance(sleep_hours, mood, stress):
+    """Return brief, non-diagnostic sleep and wellbeing suggestions."""
+    guidance = []
+    if sleep_hours is not None:
+        if sleep_hours < 6:
+            guidance.append(
+                "You logged less than 6 hours of sleep. If possible, consider a "
+                "calm wind-down routine and a consistent bedtime; sleep needs vary."
+            )
+        elif sleep_hours < 7:
+            guidance.append(
+                "You logged between 6 and 7 hours. Notice how rested you feel and consider "
+                "whether a regular, relaxing bedtime routine helps."
+            )
+        else:
+            guidance.append(
+                "You logged 7 or more hours. Notice whether your sleep feels "
+                "restorative; sleep needs vary from person to person."
+            )
+    if mood is not None and stress is not None:
+        if mood <= 2 or stress >= 4:
+            guidance.append(
+                "You noted a difficult mood or high stress. Consider a short "
+                "grounding break, slow comfortable breathing, or contacting someone "
+                "you trust. If this continues, consider speaking with a qualified "
+                "mental-health professional."
+            )
+        else:
+            guidance.append(
+                "Thanks for checking in. A short pause, gentle movement, or talking "
+                "with someone supportive may help you maintain wellbeing."
+            )
+    return guidance
+
+
+def water_progress(total_ml, goal_ml):
+    """Calculate logged water amount and a bounded display progress value."""
+    progress = min(total_ml / goal_ml, 1.0) if goal_ml > 0 else 0.0
+    return total_ml, progress
 
 
 def explain_medical_term(term, language="English"):
@@ -748,6 +837,7 @@ page = st.radio(
         "Health summary",
         "Compare reports",
         "Ask your report",
+        "Wellness coach",
         "Term guide",
         "Timeline",
         "FHIR / ABHA demo",
@@ -914,7 +1004,7 @@ elif page == "Add a record":
                         category,
                     )
                     st.success("Record added to this session.")
-                    render_telugu_explanation(st.session_state.records[0]["health_data"])
+                    render_bilingual_explanation(st.session_state.records[0]["health_data"])
                     st.text_area("Extracted text — review OCR before relying on it", extracted_text, height=220)
                     st.caption("OCR can misread names, values, units, and handwriting. Verify every detail against the original.")
 
@@ -941,7 +1031,7 @@ elif page == "Add a record":
                     pasted_category,
                 )
                 st.success("Record added to this session.")
-                render_telugu_explanation(st.session_state.records[0]["health_data"])
+                render_bilingual_explanation(st.session_state.records[0]["health_data"])
 
 elif page == "Health summary":
     st.title("Health summary")
@@ -1087,6 +1177,7 @@ elif page == "Ask your report":
                                 question.strip(), records[selected], get_openai_api_key()
                             )
                         st.markdown(ai_answer)
+                        render_speech_button(ai_answer)
                         st.caption(
                             "AI-generated using this report only. Verify against "
                             "the original; this is not medical advice."
@@ -1099,11 +1190,118 @@ elif page == "Ask your report":
                             "app's OpenAI key, account quota, and connection, then retry."
                         )
             else:
-                st.markdown(answer_record_question(question, records[selected]))
+                local_answer = answer_record_question(question, records[selected])
+                st.markdown(local_answer)
+                render_speech_button(local_answer)
         st.caption(
             "AI answers may be inaccurate and OCR can misread text. Verify against the "
             "original report and ask a qualified clinician about medical decisions."
         )
+
+elif page == "Wellness coach":
+    st.title("Sleep, mood & hydration")
+    st.caption(
+        "Private, session-only check-ins with simple local guidance. This is not a "
+        "diagnosis or a substitute for professional care."
+    )
+    st.info(
+        "This public demo has no sign-in or access controls. Use fictional check-in "
+        "data only. Entries are held in this active session and are not sent to an AI service."
+    )
+    today = date.today().isoformat()
+    if st.session_state.get("wellness_water_day") != today:
+        st.session_state.wellness_water_day = today
+        st.session_state.wellness_water_glasses = 0
+        st.session_state.wellness_water_ml = 0
+    if "wellness_checkins" not in st.session_state:
+        st.session_state.wellness_checkins = []
+
+    st.subheader("Water tracker")
+    water_goal = st.number_input(
+        "Your chosen daily goal (mL; 0 means no goal)",
+        min_value=0,
+        max_value=10000,
+        value=0,
+        step=100,
+        key="wellness_water_goal_ml",
+        help="Choose a goal advised for you, if you have one. This app does not prescribe a water target.",
+    )
+    water_cols = st.columns([1, 1, 1])
+    with water_cols[0]:
+        glass_ml = st.number_input(
+            "Your glass size (mL)",
+            min_value=100,
+            max_value=1000,
+            value=250,
+            step=50,
+            key="wellness_glass_size_ml",
+        )
+    with water_cols[1]:
+        if st.button("Log one glass", type="primary"):
+            st.session_state.wellness_water_glasses += 1
+            st.session_state.wellness_water_ml += glass_ml
+    with water_cols[2]:
+        st.metric("Glasses today", st.session_state.wellness_water_glasses)
+    total_water = st.session_state.wellness_water_ml
+    _, progress = water_progress(total_water, water_goal)
+    st.write(f"Logged today: **{total_water:,} mL**")
+    if water_goal:
+        st.progress(progress, text=f"{total_water:,} / {water_goal:,} mL of your chosen goal")
+    else:
+        st.caption("Set your own goal above if you want to track progress toward one.")
+    st.caption("No timed or background reminders are sent; this tracker updates while the app is open.")
+
+    st.divider()
+    st.subheader("Sleep & mental wellness check-in")
+    with st.form("wellness_checkin_form"):
+        sleep_hours = st.number_input(
+            "Sleep last night (hours)",
+            min_value=0.0,
+            max_value=24.0,
+            value=7.0,
+            step=0.25,
+        )
+        mood = st.slider("Mood today (1 = difficult, 5 = good)", 1, 5, 3)
+        stress = st.slider("Stress today (1 = low, 5 = high)", 1, 5, 3)
+        checkin_submitted = st.form_submit_button("Save check-in in this session")
+    if checkin_submitted:
+        st.session_state.wellness_checkins.append(
+            {
+                "Date": today,
+                "Sleep (hours)": sleep_hours,
+                "Mood (1–5)": mood,
+                "Stress (1–5)": stress,
+            }
+        )
+        st.session_state.wellness_checkins = st.session_state.wellness_checkins[-30:]
+        guidance = wellness_guidance(sleep_hours, mood, stress)
+        st.subheader("Your gentle check-in")
+        for item in guidance:
+            st.write(item)
+        render_speech_button(" ".join(guidance))
+    with st.expander("If you need urgent support"):
+        st.write(
+            "If you may be in immediate danger or might hurt yourself or someone else, "
+            "contact local emergency services or a crisis support service now, and reach "
+            "out to someone you trust."
+        )
+    if st.session_state.wellness_checkins:
+        st.subheader("Recent check-ins")
+        st.dataframe(
+            st.session_state.wellness_checkins,
+            hide_index=True,
+            width="stretch",
+        )
+        if st.button("Clear wellness check-ins and water log"):
+            st.session_state.wellness_checkins = []
+            st.session_state.wellness_water_glasses = 0
+            st.session_state.wellness_water_ml = 0
+            st.rerun()
+    st.caption(
+        "Guidance is a small set of local rules, not medical or mental-health advice. "
+        "Sleep and hydration needs vary. Speak with a qualified professional if a concern "
+        "persists or affects daily life."
+    )
 
 elif page == "Term guide":
     st.title("Medical term guide")

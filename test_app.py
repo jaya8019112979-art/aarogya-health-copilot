@@ -12,6 +12,8 @@ from app import (
     generate_ai_summary,
     make_fhir_bundle,
     request_ai_completion,
+    water_progress,
+    wellness_guidance,
 )
 
 
@@ -74,6 +76,19 @@ class HealthDataExtractionTests(unittest.TestCase):
         self.assertIn("Metformin", summary)
         self.assertIn("500 mg", summary)
         self.assertIn("మందు మార్చవద్దు", summary)
+
+    def test_extraction_recap_supports_english_and_telugu(self):
+        data = extract_health_data("Hemoglobin: 10.2 g/dL (12-16)")
+
+        english, english_disclaimer = create_summary(data, "English")
+        telugu, telugu_disclaimer = create_summary(data, "Telugu")
+
+        self.assertIn("Hemoglobin", english)
+        self.assertIn("10.2 g/dL", english)
+        self.assertIn("Hemoglobin", telugu)
+        self.assertIn("10.2 g/dL", telugu)
+        self.assertIn("not a diagnosis", english_disclaimer)
+        self.assertIn("వైద్య నిర్ధారణ కాదు", telugu_disclaimer)
 
     def test_qualified_lab_values_are_not_treated_as_exact_numbers(self):
         data = extract_health_data("Marker: <5 mg/L (10-20)\n")
@@ -208,6 +223,19 @@ class HealthDataExtractionTests(unittest.TestCase):
     def test_ai_request_rejects_empty_provider_response(self):
         with self.assertRaisesRegex(RuntimeError, "empty response"):
             request_ai_completion("system", "report", "test-key", FakeOpenAIClient(" "))
+
+    def test_wellness_guidance_uses_gentle_non_diagnostic_language(self):
+        low_sleep = wellness_guidance(5.5, 2, 4)
+        restorative_sleep = wellness_guidance(8, 4, 2)
+
+        self.assertTrue(any("wind-down routine" in line for line in low_sleep))
+        self.assertTrue(any("mental-health professional" in line for line in low_sleep))
+        self.assertTrue(any("sleep needs vary" in line for line in restorative_sleep))
+
+    def test_water_progress_does_not_exceed_selected_goal(self):
+        self.assertEqual(water_progress(750, 1000), (750, 0.75))
+        self.assertEqual(water_progress(1250, 1000), (1250, 1.0))
+        self.assertEqual(water_progress(500, 0), (500, 0.0))
 
 
 if __name__ == "__main__":
