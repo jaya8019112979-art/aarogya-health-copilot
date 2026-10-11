@@ -393,14 +393,14 @@ def create_summary(health_data, language):
         },
         "Telugu": {
             "title": "రికార్డు సారాంశం",
-            "empty": "నిర్మిత ల్యాబ్ విలువలు, మందులు లేదా తేదీలు గుర్తించబడలేదు. అసలు నివేదికను పరిశీలించండి.",
-            "abnormal": "నివేదికలో {name}: {value} {unit} (నివేదిక పరిధి {low}–{high})గా ఉంది; ఇది నివేదికలో ఇచ్చిన పరిధికి వెలుపల ఉంది.",
-            "normal": "{name}: {value} {unit} (నివేదికలో ఇచ్చిన పరిధి {low}–{high}లో ఉంది).",
-            "qualified": "{name}: {value} {unit}. నివేదికలో పరిమితి సూచించే విలువ ఉంది; అందువల్ల పేర్కొన్న పరిధి ({low}–{high})తో స్వయంచాలకంగా పోల్చలేదు.",
-            "medicine": "మందు వివరాలు గుర్తించబడ్డాయి: {name}, {dose}{instructions}. ప్రిస్క్రిప్షన్ మరియు వైద్య బృందంతో సూచనలను నిర్ధారించండి.",
+            "empty": "ఈ పత్రంలో చదవగలిగిన ల్యాబ్ విలువలు, మందులు లేదా తేదీలు గుర్తించలేదు. అసలు రిపోర్టును పరిశీలించండి.",
+            "abnormal": "{name}: {value} {unit}. ఈ రిపోర్టులో ఇచ్చిన {low}–{high} హద్దుతో పోలిస్తే ఈ విలువ {direction}గా ఉంది. ఇది ఒక్కటే ఏ వ్యాధినీ నిర్ధారించదు.",
+            "normal": "{name}: {value} {unit}. ఈ రిపోర్టులో ఇచ్చిన {low}–{high} హద్దులలో ఉంది.",
+            "qualified": "{name}: {value} {unit}. ఈ ఫలితానికి ప్రత్యేక గుర్తు ఉంది; అందువల్ల {low}–{high} హద్దుతో పోల్చలేదు. అసలు రిపోర్టును చూసి వైద్యుడిని అడగండి.",
+            "medicine": "గుర్తించిన మందు: {name}, {dose}{instructions}. మోతాదును అసలు ప్రిస్క్రిప్షన్‌తో సరిపోల్చండి; వైద్యుడిని అడగకుండా మందు మార్చవద్దు.",
             "diagnosis": "పత్రంలోని నిర్ధారణ/ఇంప్రెషన్ వచనం: {value}",
             "date": "పత్రంలో గుర్తించిన తేదీలు: {value}",
-            "disclaimer": "ఇది పాఠ్య సంగ్రహణ మాత్రమే, నిర్ధారణ కాదు. ఫలితాలను అర్హత కలిగిన వైద్య నిపుణులతో చర్చించండి.",
+            "disclaimer": "ఇది రిపోర్టులోని వచనాన్ని సులభంగా చూపించే ప్రయత్నం మాత్రమే; వైద్య నిర్ధారణ కాదు. OCR లేదా గుర్తింపు తప్పు కావచ్చు. అసలు రిపోర్టును చూసి, ఆరోగ్య నిర్ణయాల కోసం అర్హత కలిగిన వైద్యుడిని సంప్రదించండి.",
         },
     }[language]
     lines = [f"### {phrases['title']}"]
@@ -421,6 +421,7 @@ def create_summary(health_data, language):
                 unit=item["unit"],
                 low=item["reference_low"],
                 high=item["reference_high"],
+                direction="తక్కువ" if item["status"] == "Low" else "ఎక్కువ",
             )
         )
     for item in health_data["medications"]:
@@ -439,6 +440,14 @@ def create_summary(health_data, language):
         lines.append(phrases["empty"])
 
     return "\n\n".join(lines), phrases["disclaimer"]
+
+
+def render_telugu_explanation(health_data):
+    """Show a simple, rule-based Telugu recap after a record is added."""
+    summary, disclaimer = create_summary(health_data, "Telugu")
+    st.subheader("సులభమైన వివరణ (తెలుగు)")
+    st.markdown(summary)
+    st.warning(disclaimer)
 
 
 def explain_medical_term(term, language="English"):
@@ -905,6 +914,7 @@ elif page == "Add a record":
                         category,
                     )
                     st.success("Record added to this session.")
+                    render_telugu_explanation(st.session_state.records[0]["health_data"])
                     st.text_area("Extracted text — review OCR before relying on it", extracted_text, height=220)
                     st.caption("OCR can misread names, values, units, and handwriting. Verify every detail against the original.")
 
@@ -931,6 +941,7 @@ elif page == "Add a record":
                     pasted_category,
                 )
                 st.success("Record added to this session.")
+                render_telugu_explanation(st.session_state.records[0]["health_data"])
 
 elif page == "Health summary":
     st.title("Health summary")

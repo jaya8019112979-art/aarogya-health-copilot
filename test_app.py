@@ -56,6 +56,25 @@ class HealthDataExtractionTests(unittest.TestCase):
         self.assertIn("No structured lab values", summary)
         self.assertIn("not a diagnosis", disclaimer)
 
+    def test_telugu_summary_explains_out_of_range_value_in_simple_language(self):
+        data = extract_health_data("Hemoglobin: 10.2 g/dL (12-16)")
+
+        summary, disclaimer = create_summary(data, "Telugu")
+
+        self.assertIn("Hemoglobin: 10.2 g/dL", summary)
+        self.assertIn("తక్కువగా ఉంది", summary)
+        self.assertIn("12–16", summary)
+        self.assertIn("వైద్య నిర్ధారణ కాదు", disclaimer)
+
+    def test_telugu_summary_keeps_medicine_dose_and_warns_not_to_change_it(self):
+        data = extract_health_data("Metformin 500 mg twice daily")
+
+        summary, _ = create_summary(data, "Telugu")
+
+        self.assertIn("Metformin", summary)
+        self.assertIn("500 mg", summary)
+        self.assertIn("మందు మార్చవద్దు", summary)
+
     def test_qualified_lab_values_are_not_treated_as_exact_numbers(self):
         data = extract_health_data("Marker: <5 mg/L (10-20)\n")
         record = {

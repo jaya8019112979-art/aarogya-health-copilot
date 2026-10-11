@@ -13,7 +13,7 @@ Text-based PDFs are parsed with pypdf. Image uploads and scanned PDFs use Tesser
 ## Website screens
 
 - **Overview:** Session record counts, a first-record call to action, and recent uploads.
-- **Add a record:** Upload a PDF/image or paste report text, assign a category, and review extracted text before relying on it.
+- **Add a record:** Upload a PDF/image or paste report text, assign a category, review extracted text, and see an immediate simple Telugu recap of recognized details.
 - **Health summary:** Choose a source record, view its rule-based recap in English, Hindi, or Telugu, optionally request an AI-generated explanation, and download a plain-text summary.
 - **Compare reports:** Compare repeated lab-test names across records without treating differences as a clinical trend.
 - **Ask your report:** Search one record locally or, after explicit consent, request an AI answer grounded in the selected record.
@@ -79,6 +79,6 @@ flowchart LR
 ## Demo walkthrough
 
 1. Open **Add a record** and paste a sample report or upload a text PDF / image.
-2. Review extracted text carefully, especially if OCR was used.
+2. Review extracted text carefully, especially if OCR was used; the app also displays a rule-based Telugu explanation after extraction.
 3. Open **Health summary** and switch the fixed summary wording between English, Hindi, and Telugu. If cloud AI is configured, explicitly opt in before generating an AI explanation.
 4. View the report in **Timeline**, then preview or download the dummy **FHIR / ABHA demo** JSON.
